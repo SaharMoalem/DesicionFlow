@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DecisionFlow - AI Decision Analyzer</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤔 DecisionFlow</h1>
+            <p class="subtitle">Get structured, defensible recommendations for your decisions</p>
+        </header>
+
+        <main>
+            <div id="chat-container" class="chat-container">
+                <div id="messages" class="messages">
+                    <div class="welcome-message">
+                        <p>👋 Welcome! Describe your decision below. For example:</p>
+                        <div class="example">
+                            <strong>Example:</strong> "Should we choose AWS or GCP for our new microservice? We need high scalability and low cost, with a budget of $50,000."
+                        </div>
+                        <div class="tips">
+                            <p><strong>Tips:</strong></p>
+                            <ul>
+                                <li>Mention your options clearly (e.g., "between Option A and Option B")</li>
+                                <li>Include context about your needs and constraints</li>
+                                <li>Be specific about what matters most to you</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-container">
+                    <textarea 
+                        id="decision-input" 
+                        placeholder="Describe your decision here... (e.g., 'Should we hire now or wait 3 months? We have budget but need to balance immediate needs.')"
+                        rows="4"
+                    ></textarea>
+                    <button id="submit-btn" class="submit-btn">
+                        <span id="btn-text">Analyze Decision</span>
+                        <span id="btn-spinner" class="spinner hidden">⏳</span>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
+
