@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError as PydanticValidationError
 
 from app.api import health, ready
@@ -33,6 +34,15 @@ app = FastAPI(
     version=settings.logic_version,
     docs_url="/docs",
     redoc_url="/redoc",
+)
+
+# Add CORS middleware (allow all origins in development)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if settings.is_development() else [],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Add request ID middleware

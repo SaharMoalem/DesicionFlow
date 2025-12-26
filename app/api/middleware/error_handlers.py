@@ -79,8 +79,14 @@ def transform_exception_to_error_response(
             error_details["agent"] = exc.agent_name
     elif isinstance(exc, LLMError):
         if exc.status_code == 429:
-            error_code = ErrorCode.RATE_LIMIT_EXCEEDED
-            status_code = status.HTTP_429_TOO_MANY_REQUESTS
+            # Check if this is a quota error vs rate limit error
+            error_message = str(exc).lower()
+            if "quota" in error_message or "billing" in error_message or "insufficient_quota" in error_message:
+                error_code = ErrorCode.QUOTA_EXCEEDED
+                status_code = status.HTTP_429_TOO_MANY_REQUESTS  # OpenAI uses 429 for both
+            else:
+                error_code = ErrorCode.RATE_LIMIT_EXCEEDED
+                status_code = status.HTTP_429_TOO_MANY_REQUESTS
         elif exc.status_code == 503:
             error_code = ErrorCode.SERVICE_UNAVAILABLE
             status_code = status.HTTP_503_SERVICE_UNAVAILABLE

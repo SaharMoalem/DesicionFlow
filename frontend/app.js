@@ -28,19 +28,106 @@ function parseDecisionText(text) {
     const constraints = {};
     let decisionContext = text;
     
-    // Try to extract options (look for patterns like "between X and Y", "X or Y", etc.)
-    const optionPatterns = [
-        /between\s+([^,]+?)\s+and\s+([^,.!?]+)/i,
-        /(?:choose|select|pick|decide)\s+(?:between\s+)?([^,]+?)\s+(?:or|vs|versus)\s+([^,.!?]+)/i,
-        /(?:should\s+we|should\s+I)\s+([^,]+?)\s+or\s+([^,.!?]+)/i,
-    ];
+    // Strategy: Split on " or " - this is the most reliable approach
+    // Find " or " and extract what's before and after it
     
-    for (const pattern of optionPatterns) {
-        const match = text.match(pattern);
+    // Simple and direct: find " or " and split (case insensitive)
+    // Use regex to find " or " with any case
+    const orMatch = text.match(/\s+[Oo]r\s+/);
+    
+    if (orMatch) {
+        const orIndex = orMatch.index;
+        const orLength = orMatch[0].length;
+        
+        // Get text before " or "
+        const beforeOr = text.substring(0, orIndex).trim();
+        // Get text after " or "
+        const afterOr = text.substring(orIndex + orLength).trim();
+        
+        // Extract first option - remove question intro
+        let opt1 = beforeOr;
+        
+        // Remove "Should we choose" and similar patterns
+        if (opt1.toLowerCase().startsWith('should we choose ')) {
+            opt1 = opt1.substring('should we choose '.length);
+        } else if (opt1.toLowerCase().startsWith('should we ')) {
+            // Find the first space after "should we " and remove up to the next space (the verb)
+            const afterShouldWe = opt1.substring('should we '.length);
+            const verbEnd = afterShouldWe.indexOf(' ');
+            if (verbEnd > 0) {
+                opt1 = afterShouldWe.substring(verbEnd + 1);
+            } else {
+                opt1 = afterShouldWe;
+            }
+        } else if (opt1.toLowerCase().startsWith('should i ')) {
+            const afterShouldI = opt1.substring('should i '.length);
+            const verbEnd = afterShouldI.indexOf(' ');
+            if (verbEnd > 0) {
+                opt1 = afterShouldI.substring(verbEnd + 1);
+            } else {
+                opt1 = afterShouldI;
+            }
+        }
+        
+        opt1 = opt1.trim();
+        
+        // Extract second option - stop at question mark, period, or new sentence
+        let opt2 = afterOr;
+        
+        // Stop at first ?, !, or .
+        const punctIndex = opt2.search(/[?.!]/);
+        if (punctIndex > 0) {
+            opt2 = opt2.substring(0, punctIndex);
+        }
+        
+        // Also stop if we hit " We " or " Our " (start of new sentence)
+        const sentenceIndex = opt2.search(/\s+(We|Our|I|The|This)\s/);
+        if (sentenceIndex > 0) {
+            opt2 = opt2.substring(0, sentenceIndex);
+        }
+        
+        opt2 = opt2.trim();
+        
+        // Final validation
+        if (opt1.length >= 3 && opt2.length >= 3) {
+            options.push(opt1);
+            options.push(opt2);
+        } else {
+            // Debug: log what we extracted
+            console.log('Parser debug - extracted options:', { opt1, opt2, opt1Length: opt1.length, opt2Length: opt2.length });
+        }
+    } else {
+        // Debug: log if we didn't find " or "
+        console.log('Parser debug - no " or " found in text:', text.substring(0, 100));
+    }
+    
+    // Pattern 2: "between X and Y"
+    if (options.length === 0) {
+        const betweenPattern = /between\s+(.+?)\s+and\s+(.+?)(?:\?|\.|$)/i;
+        match = text.match(betweenPattern);
         if (match) {
-            options.push(match[1].trim());
-            options.push(match[2].trim());
-            break;
+            options.push(match[1].trim().replace(/[?.!]+$/, ''));
+            options.push(match[2].trim().replace(/[?.!]+$/, ''));
+        }
+    }
+    
+    // Pattern 3: "X vs Y" or "X versus Y"
+    if (options.length === 0) {
+        const vsPattern = /(.+?)\s+(?:vs|versus)\s+(.+?)(?:\?|\.|$)/i;
+        match = text.match(vsPattern);
+        if (match) {
+            options.push(match[1].trim().replace(/[?.!]+$/, ''));
+            options.push(match[2].trim().replace(/[?.!]+$/, ''));
+        }
+    }
+    
+    // Pattern 4: Generic "choose/select X or Y"
+    if (options.length === 0) {
+        const choosePattern = /(?:choose|select|pick|decide)\s+(?:between\s+)?(.+?)\s+or\s+(.+?)(?:\?|\.|$)/i;
+        match = text.match(choosePattern);
+        if (match) {
+            options.push(match[1].trim().replace(/[?.!]+$/, ''));
+            options.push(match[2].trim().replace(/[?.!]+$/, ''));
         }
     }
     
@@ -70,6 +157,14 @@ function parseDecisionText(text) {
     
     // If still no options, prompt user
     if (options.length < 2) {
+        // Debug: log what we found
+        console.log('Parse debug:', {
+            text: text.substring(0, 100),
+            foundOr: text.includes(' or ') || text.includes(' Or '),
+            optionsFound: options.length,
+            options: options
+        });
+        
         return {
             error: "I couldn't identify two clear options in your decision. Please format it like: 'Should we choose Option A or Option B? Context: [your description]'"
         };
@@ -214,20 +309,54 @@ function displayResult(result) {
                 </div>
             ` : ''}
             
-            ${result.trade_offs.length > 0 ? `
+            ${result.trade_offs && result.trade_offs.length > 0 ? `
                 <div class="section">
                     <div class="section-title">⚖️ Trade-offs</div>
                     <ul>
-                        ${result.trade_offs.map(to => `<li class="tradeoff-item">${escapeHtml(to)}</li>`).join('')}
+                        ${result.trade_offs.map(to => {
+                            // Handle both object format {description: "..."} and string format
+                            let description;
+                            if (typeof to === 'string') {
+                                description = to;
+                            } else if (to && typeof to === 'object') {
+                                // Try multiple possible property names
+                                description = to.description || to.text || to.message || to.content || JSON.stringify(to);
+                            } else {
+                                description = String(to);
+                            }
+                            return `<li class="tradeoff-item">${escapeHtml(description)}</li>`;
+                        }).join('')}
                     </ul>
                 </div>
             ` : ''}
             
-            ${result.assumptions.length > 0 ? `
+            ${result.assumptions && result.assumptions.length > 0 ? `
                 <div class="section">
                     <div class="section-title">💭 Assumptions</div>
                     <ul>
                         ${result.assumptions.map(a => `<li class="assumption-item">${escapeHtml(a)}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+            
+            ${result.risks && result.risks.length > 0 ? `
+                <div class="section">
+                    <div class="section-title">⚠️ Risks</div>
+                    <ul>
+                        ${result.risks.map(risk => {
+                            // Handle both object format and string format
+                            const description = typeof risk === 'string' ? risk : (risk.description || JSON.stringify(risk));
+                            return `<li class="risk-item">${escapeHtml(description)}</li>`;
+                        }).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+            
+            ${result.what_would_change_decision && result.what_would_change_decision.length > 0 ? `
+                <div class="section">
+                    <div class="section-title">🔄 What Would Change the Decision</div>
+                    <ul>
+                        ${result.what_would_change_decision.map(factor => `<li class="factor-item">${escapeHtml(factor)}</li>`).join('')}
                     </ul>
                 </div>
             ` : ''}

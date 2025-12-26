@@ -106,6 +106,21 @@ async def retry_with_backoff(
             if not is_retryable_error(e):
                 # Non-retryable error - raise immediately
                 if isinstance(e, RateLimitError):
+                    # Check if this is a quota error vs rate limit error
+                    # OpenAI returns 429 for both rate limits and quota issues
+                    # We distinguish by checking the error message/code
+                    error_message = str(e).lower()
+                    error_code = getattr(e, "code", None) or getattr(e, "response", {}).get("body", {}).get("error", {}).get("code") if hasattr(e, "response") else None
+                    
+                    if error_code == "insufficient_quota" or "quota" in error_message or "billing" in error_message or "insufficient_quota" in error_message:
+                        # This is a quota/billing issue, not a rate limit
+                        raise LLMError(
+                            f"OpenAI quota exceeded. Please check your billing and plan details at https://platform.openai.com/account/billing. Error: {str(e)}",
+                            retryable=False,
+                            status_code=429,
+                            original_error=e,
+                        ) from e
+                    
                     retry_after = getattr(e, "retry_after", None)
                     raise LLMRateLimitError(
                         f"Rate limit exceeded: {str(e)}", retry_after=retry_after
@@ -129,6 +144,19 @@ async def retry_with_backoff(
         raise LLMTimeoutError(f"Request timed out after {max_retries + 1} attempts") from last_error
 
     if isinstance(last_error, RateLimitError):
+        # Check if this is a quota error vs rate limit error
+        error_message = str(last_error).lower()
+        error_code = getattr(last_error, "code", None) or (getattr(last_error, "response", {}).get("body", {}).get("error", {}).get("code") if hasattr(last_error, "response") else None)
+        
+        if error_code == "insufficient_quota" or "quota" in error_message or "billing" in error_message or "insufficient_quota" in error_message:
+            # This is a quota/billing issue, not a rate limit
+            raise LLMError(
+                f"OpenAI quota exceeded. Please check your billing and plan details at https://platform.openai.com/account/billing. Error: {str(last_error)}",
+                retryable=False,
+                status_code=429,
+                original_error=last_error,
+            ) from last_error
+        
         retry_after = getattr(last_error, "retry_after", None)
         raise LLMRateLimitError(
             f"Rate limit exceeded: {str(last_error)}", retry_after=retry_after
@@ -136,6 +164,20 @@ async def retry_with_backoff(
 
     # Generic LLM error
     status_code = getattr(last_error, "status_code", None) if hasattr(last_error, "status_code") else None
+    
+    # Check for quota errors in APIError as well (429 status)
+    if isinstance(last_error, APIError) and status_code == 429:
+        error_message = str(last_error).lower()
+        error_code = getattr(last_error, "code", None) or (getattr(last_error, "response", {}).get("body", {}).get("error", {}).get("code") if hasattr(last_error, "response") else None)
+        
+        if error_code == "insufficient_quota" or "quota" in error_message or "billing" in error_message or "insufficient_quota" in error_message:
+            raise LLMError(
+                f"OpenAI quota exceeded. Please check your billing and plan details at https://platform.openai.com/account/billing. Error: {str(last_error)}",
+                retryable=False,
+                status_code=429,
+                original_error=last_error,
+            ) from last_error
+    
     raise LLMError(
         f"LLM request failed after {max_retries + 1} attempts: {str(last_error)}",
         retryable=True,
