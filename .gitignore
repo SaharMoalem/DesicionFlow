@@ -64,7 +64,12 @@ dmypy.json
 .ruff_cache/
 
 # Project specific
-_bmad-output/implementation-artifacts/
+# BMAD framework files (not part of the application)
+_bmad/
+_bmad-output/
+.cursor/rules/bmad/
+
+# Logs
 *.log
 logs/
 
