@@ -84,9 +84,3 @@ decisionflow/
 Once running, visit:
 - API docs: `http://localhost:8000/docs`
 - Health check: `http://localhost:8000/health`
-
-## License
-
-MIT
-
-
